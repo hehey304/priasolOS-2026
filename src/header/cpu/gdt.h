@@ -13,6 +13,7 @@
 #define GDT_KERNEL_DATA_SEGMENT_SELECTOR 0x10
 
 extern struct GDTR _gdt_gdtr;
+extern struct GlobalDescriptorTable global_descriptor_table;
 
 /**
  * Segment Descriptor storing system segment information.
@@ -34,7 +35,16 @@ struct SegmentDescriptor {
     uint8_t base_mid;
     uint8_t type_bit   : 4;
     uint8_t non_system : 1;
-    // TODO : Continue SegmentDescriptor definition
+    uint8_t dpl        : 2;
+    uint8_t p          : 1;
+
+    // Next 16-bit (Bit 48 to 63)
+    uint8_t segment_high : 4;
+    uint8_t avl          : 1;
+    uint8_t long_mode    : 1;
+    uint8_t db           : 1;
+    uint8_t granularity  : 1;
+    uint8_t base_high;
 
 } __attribute__((packed));
 
