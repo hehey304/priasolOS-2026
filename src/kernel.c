@@ -6,6 +6,7 @@
 #include "header/driver/keyboard.h"
 #include "header/text/framebuffer.h"
 #include "header/kernel-entrypoint.h"
+#include "header/driver/disk.h"
 
 void kernel_setup(void) {
     // Inisialisasi GDT, PIC, dan IDT
@@ -19,6 +20,10 @@ void kernel_setup(void) {
     // Bersihkan layar
     framebuffer_clear();
     framebuffer_set_cursor(0, 0);
+
+    struct BlockBuffer b;
+    for (int i = 0; i < 512; i++) b.buf[i] = i % 16;
+    write_blocks(&b, 17, 1);
    
     int row = 0, col = 0;
     
