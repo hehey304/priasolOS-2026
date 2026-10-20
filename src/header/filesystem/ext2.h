@@ -306,7 +306,33 @@ void initialize_filesystem_ext2(void);
  */
 bool is_directory_empty(uint32_t inode);
 
+/* ============================ DIRECTORY LAYER ============================ */
 
+/**
+ * @brief cari entry bernama `name` di directory `dir`
+ * @return true jika ketemu; *found_inode dan *found_type (EXT2_FT_*) terisi
+ */
+bool ext2_dir_lookup(const struct EXT2Inode *dir, const char *name, uint8_t name_len,
+                     uint32_t *found_inode, uint8_t *found_type);
+
+/**
+ * @brief tambah entry ke directory (menulis block directory ke disk)
+ * @return 0 berhasil - 1 nama sudah ada - 2 directory invalid - 3 semua block penuh
+ *         (pemanggil harus mengalokasikan block directory baru lalu mencoba lagi)
+ */
+int8_t ext2_dir_add(uint32_t dir_inode, const char *name, uint8_t name_len,
+                    uint32_t child_inode, uint8_t file_type);
+
+/**
+ * @brief hapus entry dari directory (menulis block directory ke disk)
+ * @return 0 berhasil - 1 tidak ditemukan - 2 directory invalid - 3 menolak menghapus "." / ".."
+ */
+int8_t ext2_dir_remove(uint32_t dir_inode, const char *name, uint8_t name_len);
+
+/**
+ * @brief true jika directory valid dan hanya berisi "." dan ".."
+ */
+bool ext2_dir_is_empty(uint32_t dir_inode);
 
 /* =============================== CRUD FUNC ======================================== */
 
