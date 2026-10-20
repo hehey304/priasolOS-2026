@@ -603,6 +603,47 @@ static bool p4_check_duplicate(const struct EXT2Inode *dir, const char *name, ui
     return false; 
 }
 
+static uint32_t p4_map_and_allocate_block(struct EXT2Inode *inode, uint32_t logical_idx) {
+    if (logical_idx < 12) {
+        if (inode->i_block[logical_idx] == 0) {
+            uint32_t new_blk = p4_find_free_block();
+            if (new_blk == 0) return 0;
+            inode->i_block[logical_idx] = new_blk;
+            inode->i_blocks++; 
+        }
+        return inode->i_block[logical_idx];
+    }
+    
+    logical_idx -= 12; 
+    
+    if (logical_idx < 128) { 
+        if (inode->i_block[12] == 0) {
+            uint32_t new_table = p4_find_free_block();
+            if (new_table == 0) return 0;
+            inode->i_block[12] = new_table;
+            inode->i_blocks++; 
+            
+            struct BlockBuffer empty = {0};
+            write_blocks(&empty, new_table, 1);
+        }
+        
+        struct BlockBuffer table_buf;
+        read_blocks(&table_buf, inode->i_block[12], 1);
+        uint32_t *table = (uint32_t *)table_buf.buf;
+        
+        if (table[logical_idx] == 0) {
+            uint32_t new_blk = p4_find_free_block();
+            if (new_blk == 0) return 0;
+            table[logical_idx] = new_blk;
+            inode->i_blocks++; 
+            write_blocks(&table_buf, inode->i_block[12], 1); 
+        }
+        return table[logical_idx];
+    }
+    
+    return 0; 
+}
+
 int8_t write(struct EXT2DriverRequest *request) {
     struct EXT2Inode parent_inode;
     if (!read_inode(request->parent_inode, &parent_inode)) {
@@ -656,22 +697,17 @@ int8_t write(struct EXT2DriverRequest *request) {
     } else {
         new_inode.i_mode = EXT2_FT_REG_FILE; 
         new_inode.i_size = request->buffer_size;
+        new_inode.i_blocks = 0; // Dikosongkan agar dihitung dinamis oleh helper
         
         uint32_t blocks_needed = (request->buffer_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
         if (blocks_needed == 0) blocks_needed = 1; 
-        new_inode.i_blocks = blocks_needed;
-
-        if (blocks_needed > 12) {
-            return -1; 
-        }
 
         uint8_t *data_ptr = (uint8_t *)request->buf;
         for (uint32_t i = 0; i < blocks_needed; i++) {
-            uint32_t new_data_block = p4_find_free_block();
-            if (new_data_block == 0) return -1;
+            // Panggil helper cerdas pengganti limit 12 blok
+            uint32_t new_data_block = p4_map_and_allocate_block(&new_inode, i);
+            if (new_data_block == 0) return -1; 
             
-            new_inode.i_block[i] = new_data_block;
-
             struct BlockBuffer data_buf = {0}; 
             
             uint32_t remaining = request->buffer_size > (i * BLOCK_SIZE) ? request->buffer_size - (i * BLOCK_SIZE) : 0;
@@ -763,6 +799,6 @@ int8_t write(struct EXT2DriverRequest *request) {
 }
 
 /* ============================ delete() ============================ */
-int8_t delete(struct EXT2DriverRequest *request) {
-    return ext2_dir_remove(request->parent_inode, request->name, request->name_len);
+int8_t delete(struct EXT2DriverRequest request) {
+    return ext2_dir_remove(request.parent_inode, request.name, request.name_len);
 }
