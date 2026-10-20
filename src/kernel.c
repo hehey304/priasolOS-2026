@@ -7,6 +7,7 @@
 #include "header/text/framebuffer.h"
 #include "header/kernel-entrypoint.h"
 #include "header/driver/disk.h"
+#include "header/filesystem/ext2.h"
 
 void kernel_setup(void) {
     // Inisialisasi GDT, PIC, dan IDT
@@ -21,9 +22,7 @@ void kernel_setup(void) {
     framebuffer_clear();
     framebuffer_set_cursor(0, 0);
 
-    struct BlockBuffer b;
-    for (int i = 0; i < 512; i++) b.buf[i] = i % 16;
-    write_blocks(&b, 17, 1);
+    initialize_filesystem_ext2();
    
     int row = 0, col = 0;
     

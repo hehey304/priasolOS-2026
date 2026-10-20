@@ -1,8 +1,8 @@
 #include <stdint.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include "header/stdlib/string.h"
 #include "header/filesystem/ext2.h"
+#include "header/text/framebuffer.h"
 
 const uint8_t fs_signature[BLOCK_SIZE] = {
     'C', 'o', 'u', 'r', 's', 'e', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',  ' ',
@@ -15,6 +15,7 @@ const uint8_t fs_signature[BLOCK_SIZE] = {
 };
 
 static struct EXT2BlockGroupDescriptorTable bgd_table;
+static struct EXT2Superblock sblock;
 
 #define PTRS_PER_BLOCK (BLOCK_SIZE / sizeof(uint32_t))   /* 128 */
  
@@ -170,4 +171,168 @@ int8_t read_directory(struct EXT2DriverRequest *prequest) {
         read_blocks(out + i * BLOCK_SIZE, lba, 1);
     }
     return 0;
+}
+
+bool is_empty_storage(void) {
+    struct BlockBuffer b;
+    
+    // baca satu block dari disk
+    read_blocks(&b, BOOT_SECTOR, 1);
+    
+    // bandingin blok yang dibaca dengan fs_signature, harus sama persis agar disk bisa dibaca
+    return memcmp(b.buf, fs_signature, BLOCK_SIZE) != 0;
+}
+
+void create_ext2(void) {
+    //Write signature to the Boot Sector
+    write_blocks((void *)fs_signature, BOOT_SECTOR, 1);
+
+
+    // Fill in global stats using the constants defined in ext2.h
+    sblock.s_inodes_count = INODES_PER_GROUP * GROUPS_COUNT;
+    sblock.s_blocks_count = DISK_SPACE / BLOCK_SIZE;
+    
+    // Set the magic signature so the OS knows this is EXT2
+    sblock.s_magic = EXT2_SUPER_MAGIC;
+    
+    // Set the group metrics
+    sblock.s_blocks_per_group = BLOCKS_PER_GROUP;
+    sblock.s_inodes_per_group = INODES_PER_GROUP;
+    
+    // By convention, Block 0 is Boot Sector, Block 1 is the Superblock.
+    sblock.s_first_data_block = 1; 
+
+    struct BlockBuffer sb_buf = {0};
+    memcpy(sb_buf.buf, &sblock, sizeof(sblock));
+    write_blocks(&sb_buf, 1, 1);
+    
+    // Build the Block Group Descriptor Table (BGDT) ---
+    // ext2.c has a global variable called 'bgd_table'.
+    // Blocks 0 (Boot), 1 (Superblock), and 2 (BGDT) are taken.
+    // The first available data block for our bitmaps and tables is Block 3.
+    uint32_t current_lba = 3; 
+
+    // Loop through all 8 groups (GROUPS_COUNT) to assign their addresses
+    for (uint32_t i = 0; i < GROUPS_COUNT; i++) {
+        // 1. Assign address for the Block Bitmap (needs 1 block)
+        bgd_table.table[i].bg_block_bitmap = current_lba;
+        current_lba += 1; // Move the address counter forward by 1
+        
+        // 2. Assign address for the Inode Bitmap (needs 1 block)
+        bgd_table.table[i].bg_inode_bitmap = current_lba;
+        current_lba += 1; // Move the address counter forward by 1
+        
+        // 3. Assign address for the Inode Table 
+        // (INODES_TABLE_BLOCK_COUNT is defined as 16 blocks)
+        bgd_table.table[i].bg_inode_table = current_lba;
+        current_lba += INODES_TABLE_BLOCK_COUNT; // Move counter forward by 16
+        
+        // 4. Set the initial "free" counts for this group
+        bgd_table.table[i].bg_free_inodes_count = INODES_PER_GROUP;
+        bgd_table.table[i].bg_free_blocks_count = BLOCKS_PER_GROUP;
+        bgd_table.table[i].bg_used_dirs_count = 0;
+    }
+
+
+    // --- STEP 4: Build the blank "buildings" (Bitmaps & Tables) ---
+    // Create one 512-byte buffer in RAM and fill it entirely with zeroes
+    struct BlockBuffer empty_block = {0}; 
+
+    // Loop through all 8 groups to physically write the empty data to the disk
+    for (uint32_t i = 0; i < GROUPS_COUNT; i++) {
+        // 1. Stamp 1 block of zeroes at the Block Bitmap address
+        write_blocks(&empty_block, bgd_table.table[i].bg_block_bitmap, 1);
+        
+        // 2. Stamp 1 block of zeroes at the Inode Bitmap address
+        write_blocks(&empty_block, bgd_table.table[i].bg_inode_bitmap, 1);
+        
+        // 3. Stamp 16 blocks of zeroes starting at the Inode Table address
+        // (INODES_TABLE_BLOCK_COUNT is defined as 16 in ext2.h)
+        for (uint32_t j = 0; j < INODES_TABLE_BLOCK_COUNT; j++) {
+            write_blocks(&empty_block, bgd_table.table[i].bg_inode_table + j, 1);
+        }
+    }
+
+    struct BlockBuffer inode_bitmap_buf;
+    read_blocks(&inode_bitmap_buf, bgd_table.table[0].bg_inode_bitmap, 1);
+    
+    // Set the first bit (bit 0 corresponds to Inode #1) to '1'
+    inode_bitmap_buf.buf[0] |= (1 << 0);
+    
+    // Write the updated Inode Bitmap back to disk
+    write_blocks(&inode_bitmap_buf, bgd_table.table[0].bg_inode_bitmap, 1);
+
+    // 2. Set up the Root Directory's Inode (Inode #1)
+    struct EXT2Inode root_inode = {0};
+    root_inode.i_mode = EXT2_FT_DIR; // Mark it as a directory[cite: 1]
+    root_inode.i_size = BLOCK_SIZE;   // Size is one full block
+    root_inode.i_blocks = 1;          // Consumes 1 data block
+    
+    // Pick the next available block for the root directory's data contents
+    // (current_lba is currently pointing right after the inode tables)
+    uint32_t root_data_lba = current_lba;
+    root_inode.i_block[0] = root_data_lba;
+
+    // Write this root inode into Group 0's Inode Table at index 0 (which is Inode #1)
+    struct BlockBuffer inode_table_buf;
+    read_blocks(&inode_table_buf, bgd_table.table[0].bg_inode_table, 1);
+    
+    // Copy our root_inode struct into the first slot of the table buffer
+    memcpy(inode_table_buf.buf, &root_inode, sizeof(struct EXT2Inode));
+    write_blocks(&inode_table_buf, bgd_table.table[0].bg_inode_table, 1);
+
+    // 3. Write the mandatory "." and ".." directory entries into the root data block
+    struct BlockBuffer root_data_buf = {0};
+    
+    // Create the "." entry (points to itself: Inode #1)
+    struct EXT2DirectoryEntry *dot = (struct EXT2DirectoryEntry *) root_data_buf.buf;
+    dot->inode = 1;
+    dot->file_type = EXT2_FT_DIR; //[cite: 1]
+    dot->name_len = 1;
+    dot->rec_len = 12; 
+    get_entry_name(dot)[0] = '.'; // name string right after struct
+
+    // Create the ".." entry (root's parent is also itself: Inode #1)
+    // It starts right after the "." entry
+    struct EXT2DirectoryEntry *dotdot = (struct EXT2DirectoryEntry *) (root_data_buf.buf + dot->rec_len);
+    dotdot->inode = 1;
+    dotdot->file_type = EXT2_FT_DIR; //[cite: 1]
+    dotdot->name_len = 2;
+    // In EXT2, the last entry's rec_len must stretch all the way to the end of the block
+    dotdot->rec_len = BLOCK_SIZE - dot->rec_len; 
+    get_entry_name(dotdot)[0] = '.';
+    get_entry_name(dotdot)[1] = '.';
+
+    // Write this data block out to the disk
+    write_blocks(&root_data_buf, root_data_lba, 1);
+
+    struct BlockBuffer block_bitmap_buf = {0};
+    for (uint32_t blk = 0; blk <= root_data_lba; blk++)
+        block_bitmap_buf.buf[blk / 8] |= (1 << (blk % 8));
+    write_blocks(&block_bitmap_buf, bgd_table.table[0].bg_block_bitmap, 1);
+
+    bgd_table.table[0].bg_free_inodes_count -= 1;
+    bgd_table.table[0].bg_free_blocks_count -= (root_data_lba + 1);
+    bgd_table.table[0].bg_used_dirs_count   = 1;
+
+    struct BlockBuffer bgd_buf = {0};
+    memcpy(bgd_buf.buf, &bgd_table, sizeof(bgd_table));
+    write_blocks(&bgd_buf, 2, 1);
+}
+
+void initialize_filesystem_ext2(void) {
+    if (is_empty_storage()) {
+        create_ext2();
+    } else {
+        struct BlockBuffer b;
+        read_blocks(&b, 1, 1);
+        memcpy(&sblock, b.buf, sizeof(sblock));
+        read_blocks(&b, 2, 1);
+        memcpy(&bgd_table, b.buf, sizeof(bgd_table));
+    }
+    // --- Step 5 Test Check ---
+    const char *msg = (bgd_table.table[0].bg_inode_table == 5) ? "BGD OK" : "BGD BAD";
+    for (int i = 0; msg[i]; i++) {
+        framebuffer_write(0, i, msg[i], 0xF, 0);
+    }
 }
