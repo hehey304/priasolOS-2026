@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include "header/stdlib/string.h"
 #include "header/filesystem/ext2.h"
+#include "header/text/framebuffer.h"
 
 const uint8_t fs_signature[BLOCK_SIZE] = {
     'C', 'o', 'u', 'r', 's', 'e', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',  ' ',
@@ -328,5 +329,10 @@ void initialize_filesystem_ext2(void) {
         memcpy(&sblock, b.buf, sizeof(sblock));
         read_blocks(&b, 2, 1);
         memcpy(&bgd_table, b.buf, sizeof(bgd_table));
+    }
+    // --- Step 5 Test Check ---
+    const char *msg = (bgd_table.table[0].bg_inode_table == 5) ? "BGD OK" : "BGD BAD";
+    for (int i = 0; msg[i]; i++) {
+        framebuffer_write(0, i, msg[i], 0xF, 0);
     }
 }
