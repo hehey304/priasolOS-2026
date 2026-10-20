@@ -800,5 +800,81 @@ int8_t write(struct EXT2DriverRequest *request) {
 
 /* ============================ delete() ============================ */
 int8_t delete(struct EXT2DriverRequest request) {
-    return ext2_dir_remove(request.parent_inode, request.name, request.name_len);
+    struct EXT2Inode parent_dir;
+    
+    // 1. Validasi Parent Folder (Error 3: Parent folder invalid)
+    if (!read_inode(request.parent_inode, &parent_dir) || !inode_is_dir(&parent_dir)) {
+        return 3; 
+    }
+
+    // 2. Cari target entry di dalam parent (Error 1: Not found)
+    uint32_t target_inode_num;
+    uint8_t target_type;
+    if (!ext2_dir_lookup(&parent_dir, request.name, request.name_len, &target_inode_num, &target_type)) {
+        return 1; 
+    }
+
+    // 3. Proteksi Root Directory (Inode 1 tidak boleh dihapus)
+    if (target_inode_num == 1) {
+        return -1; 
+    }
+
+    struct EXT2Inode target_inode;
+    if (!read_inode(target_inode_num, &target_inode)) {
+        return -1;
+    }
+
+    // 4. Jika target adalah folder, pastikan foldernya kosong (Error 2: Folder not empty)
+    if (target_type == EXT2_FT_DIR || inode_is_dir(&target_inode)) {
+        if (!ext2_dir_is_empty(target_inode_num)) {
+            return 2; 
+        }
+    }
+
+    // 5. Hapus nama/entry dari daftar directory parent
+    int8_t remove_status = ext2_dir_remove(request.parent_inode, request.name, request.name_len);
+    if (remove_status != 0) {
+        return -1;
+    }
+
+    // 6. Bebaskan Data Blocks di Block Bitmap
+    uint32_t blocks_to_free = (target_inode.i_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    if ((target_type == EXT2_FT_DIR || inode_is_dir(&target_inode)) && blocks_to_free == 0) {
+        blocks_to_free = 1; 
+    }
+
+    struct BlockBuffer bitmap_buf;
+    for (uint32_t i = 0; i < blocks_to_free; i++) {
+        uint32_t lba = inode_block_at(&target_inode, i);
+        if (lba != 0) {
+            uint32_t bg = lba / BLOCKS_PER_GROUP;
+            uint32_t bit = lba % BLOCKS_PER_GROUP;
+            
+            read_blocks(&bitmap_buf, bgd_table.table[bg].bg_block_bitmap, 1);
+            bitmap_buf.buf[bit / 8] &= ~(1 << (bit % 8)); // Ubah bit menjadi 0 (Free)
+            write_blocks(&bitmap_buf, bgd_table.table[bg].bg_block_bitmap, 1);
+            
+            bgd_table.table[bg].bg_free_blocks_count++;
+        }
+    }
+
+    // 7. Bebaskan Inode di Inode Bitmap
+    uint32_t bg_inode = inode_to_bgd(target_inode_num);
+    uint32_t bit_inode = inode_to_local(target_inode_num);
+    
+    read_blocks(&bitmap_buf, bgd_table.table[bg_inode].bg_inode_bitmap, 1);
+    bitmap_buf.buf[bit_inode / 8] &= ~(1 << (bit_inode % 8)); // Ubah bit menjadi 0 (Free)
+    write_blocks(&bitmap_buf, bgd_table.table[bg_inode].bg_inode_bitmap, 1);
+    
+    bgd_table.table[bg_inode].bg_free_inodes_count++;
+
+    // 8. Update Block Group Descriptor Table (BGDT) dan simpan ke disk
+    if (target_type == EXT2_FT_DIR || inode_is_dir(&target_inode)) {
+        bgd_table.table[bg_inode].bg_used_dirs_count--;
+    }
+    struct BlockBuffer bgd_buf;
+    memcpy(bgd_buf.buf, &bgd_table, sizeof(bgd_table));
+    write_blocks(&bgd_buf, 2, 1);
+
+    return 0; // Sukses
 }
