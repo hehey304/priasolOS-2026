@@ -38,7 +38,6 @@ void activate_keyboard_interrupt(void) {
 }
 
 void main_interrupt_handler(struct InterruptFrame frame) {
-    // Fungsi ini dipanggil dari intsetup.s lewat call_generic_handler
     switch (frame.int_number) {
         case PIC1_OFFSET + IRQ_KEYBOARD:
             keyboard_isr();
