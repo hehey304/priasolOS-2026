@@ -761,3 +761,8 @@ int8_t write(struct EXT2DriverRequest *request) {
 
     return 0; 
 }
+
+/* ============================ delete() ============================ */
+int8_t delete(struct EXT2DriverRequest *request) {
+    return ext2_dir_remove(request->parent_inode, request->name, request->name_len);
+}
