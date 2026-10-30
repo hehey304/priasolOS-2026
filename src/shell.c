@@ -107,6 +107,12 @@ int main(void) {
                 cmd_cat(argc, argv, &io, current_cwd_inode);
             } else if (strcmp(argv[0], "grep") == 0) {
                 cmd_grep(argc, argv, &io);
+            } else if (strcmp(argv[0], "cp") == 0) {
+                cmd_cp(argc, argv, &io, current_cwd_inode);
+            } else if (strcmp(argv[0], "rm") == 0) {
+                cmd_rm(argc, argv, &io, current_cwd_inode);
+            } else if (strcmp(argv[0], "mv") == 0) {
+                cmd_mv(argc, argv, &io, current_cwd_inode);
             } else {
                 char *err = "Command not found\n";
                 memcpy(io.output_buffer, err, strlen(err));
