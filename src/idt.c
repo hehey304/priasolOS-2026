@@ -30,4 +30,12 @@ void initialize_idt(void) {
     }
     __asm__ volatile("lidt %0" : : "m"(_idt_idtr));
     __asm__ volatile("sti");
+
+    // Inside initialize_idt() in idt.c
+    set_interrupt_gate(
+        0x30, 
+        (uint32_t) main_interrupt_handler, 
+        GDT_KERNEL_CODE_SEGMENT_SELECTOR, 
+        0x3  // CRITICAL: DPL must be 3 (Ring 3 access)
+    );
 }
