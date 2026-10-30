@@ -37,7 +37,12 @@ int main(void) {
                 input_buf[idx] = '\0';
                 print_str("\n");
                 break;
-            } else if (c != 0) {
+            } else if (c == '\b') { 
+                if (idx > 0) {
+                    idx--;
+                    print_str("\b \b"); 
+                }
+            } else if (c != 0 && idx < 255) { 
                 input_buf[idx++] = c;
                 char temp[2] = {c, '\0'};
                 print_str(temp); 
@@ -107,6 +112,8 @@ int main(void) {
                 cmd_cat(argc, argv, &io, current_cwd_inode);
             } else if (strcmp(argv[0], "grep") == 0) {
                 cmd_grep(argc, argv, &io);
+            } else if (strcmp(argv[0], "find") == 0) {
+                cmd_find(argc, argv, &io);
             } else if (strcmp(argv[0], "cp") == 0) {
                 cmd_cp(argc, argv, &io, current_cwd_inode);
             } else if (strcmp(argv[0], "rm") == 0) {
