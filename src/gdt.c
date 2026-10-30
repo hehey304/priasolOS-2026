@@ -1,4 +1,6 @@
 #include "header/cpu/gdt.h"
+#include <stdint.h>
+#include "header/cpu/interrupt.h"
 
 /**
  * global_descriptor_table, predefined GDT.
@@ -39,7 +41,48 @@ struct GlobalDescriptorTable global_descriptor_table = {
             .db = 1,
             .granularity = 1,
             .base_high = 0
-        }
+        },
+        // 3: User Code Segment
+        {
+            .segment_low = 0xFFFF, .base_low = 0, .base_mid = 0,
+            .type_bit = 0xA,
+            .non_system = 1,
+            .dpl = 3,               // Ring 3
+            .p = 1,
+            .segment_high = 0xF,
+            .avl = 0, .long_mode = 0,
+            .db = 1,
+            .granularity = 1,
+            .base_high = 0
+        },
+        // 4: User Data Segment
+        {
+            .segment_low = 0xFFFF, .base_low = 0, .base_mid = 0,
+            .type_bit = 0x2,
+            .non_system = 1,
+            .dpl = 3,               // Ring 3
+            .p = 1,
+            .segment_high = 0xF,
+            .avl = 0, .long_mode = 0,
+            .db = 1,
+            .granularity = 1,
+            .base_high = 0
+        },
+        // 5: TSS
+        {
+            .segment_low = sizeof(struct TSSEntry),
+            .segment_high = (sizeof(struct TSSEntry) & (0xF << 16)) >> 16,
+            .base_low = 0, .base_mid = 0, .base_high = 0,   // filled by gdt_install_tss()
+            .type_bit = 0x9,        // 32-bit TSS (available)
+            .non_system = 0,        // S = 0 (system descriptor)
+            .dpl = 0,
+            .p = 1,
+            .avl = 0, .long_mode = 0,
+            .db = 1,
+            .granularity = 0        // byte granularity, limit is just 104 bytes
+        },
+        // 6: padding
+        {0}
     }
 };
 
@@ -52,3 +95,10 @@ struct GDTR _gdt_gdtr = {
     .size    = sizeof(global_descriptor_table) - 1,
     .address = &global_descriptor_table
 };
+
+void gdt_install_tss(void) {
+    uint32_t base = (uint32_t) &_interrupt_tss_entry;
+    global_descriptor_table.table[5].base_high = (base & (0xFF << 24)) >> 24;
+    global_descriptor_table.table[5].base_mid  = (base & (0xFF << 16)) >> 16;
+    global_descriptor_table.table[5].base_low  = base & 0xFFFF;
+}

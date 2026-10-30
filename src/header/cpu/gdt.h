@@ -9,8 +9,11 @@
  * As kernel SegmentDescriptor for code located at index 1 in GDT, 
  * segment selector is sizeof(SegmentDescriptor) * 1 = 0x8
 */ 
-#define GDT_KERNEL_CODE_SEGMENT_SELECTOR 0x8
+#define GDT_KERNEL_CODE_SEGMENT_SELECTOR 0x08
 #define GDT_KERNEL_DATA_SEGMENT_SELECTOR 0x10
+#define GDT_USER_CODE_SEGMENT_SELECTOR   0x18
+#define GDT_USER_DATA_SEGMENT_SELECTOR   0x20
+#define GDT_TSS_SELECTOR                 0x28
 
 extern struct GDTR _gdt_gdtr;
 extern struct GlobalDescriptorTable global_descriptor_table;

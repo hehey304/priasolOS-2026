@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "header/memory/paging.h"
+#include "paging.h"
 
 /**
  * Jumlah slot swap (1 slot = 1 page frame = 4 KiB = 8 block disk).
