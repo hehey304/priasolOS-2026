@@ -30,7 +30,7 @@ void kernel_setup(void) {
     struct EXT2DriverRequest request = {
         .buf = (uint8_t*) 0,
         .name = "shell",
-        .parent_inode = 1,  // Double-check field name in your ext2.h (e.g., inode vs ext2_inode_number)
+        .parent_inode = 1,  
         .buffer_size = 0x100000,
         .name_len = 5,
     };
