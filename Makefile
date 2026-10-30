@@ -41,7 +41,7 @@ kernel:
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/portio.c -o $(OUTPUT_FOLDER)/portio.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/keyboard.c -o $(OUTPUT_FOLDER)/keyboard.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/disk.c -o $(OUTPUT_FOLDER)/disk.o
-	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/ext2.c -o $(OUTPUT_FOLDER)/ext2.o
+	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/filesystem/ext2.c -o $(OUTPUT_FOLDER)/ext2.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/stdlib/string.c -o $(OUTPUT_FOLDER)/string.o
 	@$(CC) $(CFLAGS) $(SOURCE_FOLDER)/swap.c -o $(OUTPUT_FOLDER)/swap.o
 	@$(LIN) $(LFLAGS) $(OUTPUT_FOLDER)/*.o -o $(OUTPUT_FOLDER)/kernel
@@ -70,3 +70,10 @@ disk:
 	@if [ ! -f $(OUTPUT_FOLDER)/$(DISK_NAME).bin ]; then \
 		qemu-img create -f raw $(OUTPUT_FOLDER)/$(DISK_NAME).bin 4M; \
 	fi
+
+inserter:
+	@$(CC) -Wno-builtin-declaration-mismatch -g -I$(SOURCE_FOLDER) \
+		$(SOURCE_FOLDER)/stdlib/string.c \
+		$(SOURCE_FOLDER)/filesystem/ext2.c \
+		$(SOURCE_FOLDER)/external/external-inserter.c \
+		-o $(OUTPUT_FOLDER)/inserter
