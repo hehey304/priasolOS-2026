@@ -72,4 +72,9 @@ struct GDTR {
     struct GlobalDescriptorTable *address;
 } __attribute__((packed));
 
+
+
+void gdt_install_tss(void);
+
+
 #endif

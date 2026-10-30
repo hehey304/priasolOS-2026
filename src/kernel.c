@@ -10,39 +10,35 @@
 #include "header/filesystem/ext2.h"
 
 void kernel_setup(void) {
-    // Inisialisasi GDT, PIC, dan IDT
+    // 1. Basic Kernel Initializations
     load_gdt(&_gdt_gdtr);
     pic_remap();
     initialize_idt();
-    
-    // Aktifkan interrupt keyboard pada PIC
     activate_keyboard_interrupt();
-    
-    // Bersihkan layar
     framebuffer_clear();
     framebuffer_set_cursor(0, 0);
 
+    // 2. Filesystem & TSS Initializations
     initialize_filesystem_ext2();
-   
-    int row = 0, col = 0;
-    
-    // Mulai menangkap input keyboard
-    keyboard_state_activate();
-    
-    // Loop utama sistem operasi untuk mencetak input
-    while (true) {
-        char c;
-        get_keyboard_buffer(&c);
-        
-        if (c) {
-            framebuffer_write(row, col, c, 0xF, 0);
-            if (col >= 79) { 
-                ++row;
-                col = 0;
-            } else {
-                ++col;
-            }
-           framebuffer_set_cursor(row, col);
-        }
-    }
+    gdt_install_tss();
+    set_tss_register();
+
+    // 3. Allocate Virtual Memory for User Program at Address 0x0
+    paging_allocate_user_page_frame(&_paging_kernel_page_directory, (uint8_t*) 0);
+
+    // 4. Load "shell" Binary from Root Directory (Inode 1) into Virtual Address 0x0
+    struct EXT2DriverRequest request = {
+        .buf = (uint8_t*) 0,
+        .name = "shell",
+        .parent_inode = 1,  // Double-check field name in your ext2.h (e.g., inode vs ext2_inode_number)
+        .buffer_size = 0x100000,
+        .name_len = 5,
+    };
+    read(request);
+
+    // 5. Prepare TSS Kernel Stack and Jump to Ring 3
+    set_tss_kernel_current_stack();
+    kernel_execute_user_program((uint8_t*) 0);
+
+    while (true);
 }
