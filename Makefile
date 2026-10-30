@@ -27,7 +27,7 @@ run: all disk
 all: build
 build: iso
 clean:
-	rm -rf *.o *.iso $(OUTPUT_FOLDER)/*.o $(OUTPUT_FOLDER)/kernel $(OUTPUT_FOLDER)/$(ISO_NAME).iso
+	rm -rf *.o *.iso $(OUTPUT_FOLDER)
 
 kernel:
 	@mkdir -p $(OUTPUT_FOLDER)

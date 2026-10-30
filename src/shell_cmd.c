@@ -131,10 +131,95 @@ void cmd_cat(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
     }
 }
 
+static int matchhere(char *regexp, char *text);
+static int matchstar(int c, char *regexp, char *text);
+
+static int match(char *regexp, char *text) {
+
+    for (int i = 0; regexp[i] != '\0'; i++) {
+        if (regexp[i] == '|') {
+            regexp[i] = '\0'; 
+            int match_left = match(regexp, text);
+            regexp[i] = '|';  
+            if (match_left) return 1;
+            return match(regexp + i + 1, text); 
+        }
+    }
+
+    if (regexp[0] == '^')
+        return matchhere(regexp + 1, text);
+    do {
+        if (matchhere(regexp, text))
+            return 1;
+    } while (*text++ != '\0');
+    return 0;
+}
+
+static int matchhere(char *regexp, char *text) {
+    if (regexp[0] == '\0') return 1;
+
+    if (regexp[0] == '\\' && regexp[1] != '\0') {
+        if (*text != '\0' && *text == regexp[1])
+            return matchhere(regexp + 2, text + 1);
+        return 0;
+    }
+
+    if (regexp[0] == '[') {
+        int negate = 0;
+        int i = 1;
+        if (regexp[i] == '^') { 
+            negate = 1; 
+            i++; 
+        }
+        
+        int match_found = 0;
+        while (regexp[i] != ']' && regexp[i] != '\0') {
+            if (*text == regexp[i]) match_found = 1;
+            i++;
+        }
+        
+        if (regexp[i] == '\0') return 0; 
+        
+        if ((!negate && match_found) || (negate && !match_found)) {
+            return matchhere(regexp + i + 1, text + 1);
+        }
+        return 0;
+    }
+
+    if (regexp[1] == '*') return matchstar(regexp[0], regexp + 2, text);
+    
+    if (regexp[1] == '+') {
+        if (*text != '\0' && (*text == regexp[0] || regexp[0] == '.'))
+            return matchstar(regexp[0], regexp + 2, text + 1);
+        return 0;
+    }
+    
+    if (regexp[1] == '?') {
+        if (*text != '\0' && (*text == regexp[0] || regexp[0] == '.')) {
+            if (matchhere(regexp + 2, text + 1)) return 1;
+        }
+        return matchhere(regexp + 2, text);
+    }
+
+    if (regexp[0] == '$' && regexp[1] == '\0') return *text == '\0';
+
+    if (*text != '\0' && (regexp[0] == '.' || regexp[0] == *text))
+        return matchhere(regexp + 1, text + 1);
+
+    return 0;
+}
+
+static int matchstar(int c, char *regexp, char *text) {
+    do {
+        if (matchhere(regexp, text))
+            return 1;
+    } while (*text != '\0' && (*text++ == c || c == '.'));
+    return 0;
+}
+
 void cmd_grep(int argc, char **argv, struct ShellIO *io) {
     if (argc < 2) return;
-    char *keyword = argv[1];
-    int key_len = strlen(keyword);
+    char *keyword = argv[1]; 
     
     int in_idx = 0;
     int out_idx = 0;
@@ -143,25 +228,20 @@ void cmd_grep(int argc, char **argv, struct ShellIO *io) {
     
     while (io->input_buffer[in_idx] != '\0' && in_idx < MAX_IO_BUFFER) {
         char c = io->input_buffer[in_idx++];
+
         if (c != '\n' && line_idx < 255) {
             line[line_idx++] = c;
         } else {
-            line[line_idx] = '\0';
-            bool found = false;
-            for (int i = 0; i <= line_idx - key_len; i++) {
-                if (memcmp(&line[i], keyword, key_len) == 0) {
-                    found = true;
-                    break;
-                }
-            }
-            if (found) {
+            line[line_idx] = '\0'; 
+            
+            if (match(keyword, line)) {
                 memcpy(io->output_buffer + out_idx, line, line_idx);
                 out_idx += line_idx;
                 io->output_buffer[out_idx++] = '\n';
             }
-            line_idx = 0;
         }
     }
+    
     io->output_buffer[out_idx] = '\0';
     io->output_len = out_idx;
 }
