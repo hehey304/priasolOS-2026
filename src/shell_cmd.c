@@ -167,7 +167,160 @@ void cmd_grep(int argc, char **argv, struct ShellIO *io) {
 }
 
 // Code Fikri taro bawah yeah
+void cmd_cp(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
+    if (argc < 3) {
+        char *err = "cp: Penggunaan: cp <src> <dst>\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+        return;
+    }
 
+    char file_buf[MAX_IO_BUFFER];
+    memset(file_buf, 0, MAX_IO_BUFFER);
+
+    struct EXT2DriverRequest read_req = {
+        .parent_inode = cwd,
+        .name = argv[1],
+        .name_len = strlen(argv[1]),
+        .buffer_size = MAX_IO_BUFFER,
+        .buf = file_buf
+    };
+
+    int32_t retcode;
+    syscall(SYSCALL_READ, (uint32_t) &read_req, (uint32_t) &retcode, 0);
+
+    if (retcode != 0) {
+        char *err = "cp: File sumber tidak ditemukan atau bukan file\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+        return;
+    }
+
+    // buffer_size == 0 berarti buat folder, jadi file kosong tetap ditulis minimal 1 byte
+    uint32_t size = strlen(file_buf);
+    if (size == 0) size = 1;
+
+    struct EXT2DriverRequest write_req = {
+        .parent_inode = cwd,
+        .name = argv[2],
+        .name_len = strlen(argv[2]),
+        .is_directory = false,
+        .buffer_size = size,
+        .buf = file_buf
+    };
+
+    syscall(SYSCALL_WRITE, (uint32_t) &write_req, (uint32_t) &retcode, 0);
+
+    if (retcode == 1) {
+        char *err = "cp: File tujuan sudah ada\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+    } else if (retcode != 0) {
+        char *err = "cp: Gagal menulis file tujuan\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+    }
+}
+
+void cmd_rm(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
+    if (argc < 2) {
+        char *err = "rm: Penggunaan: rm <file>\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+        return;
+    }
+
+    struct EXT2DriverRequest req = {
+        .parent_inode = cwd,
+        .name = argv[1],
+        .name_len = strlen(argv[1]),
+        .is_directory = false,
+        .buffer_size = 0,
+        .buf = 0
+    };
+
+    int32_t retcode;
+    syscall(SYSCALL_DELETE, (uint32_t) &req, (uint32_t) &retcode, 0);
+
+    if (retcode == 1) {
+        char *err = "rm: File tidak ditemukan\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+    } else if (retcode != 0) {
+        char *err = "rm: Gagal menghapus file\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+    }
+}
+
+void cmd_mv(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
+    if (argc < 3) {
+        char *err = "mv: Penggunaan: mv <src> <dst>\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+        return;
+    }
+
+    char file_buf[MAX_IO_BUFFER];
+    memset(file_buf, 0, MAX_IO_BUFFER);
+
+    struct EXT2DriverRequest read_req = {
+        .parent_inode = cwd,
+        .name = argv[1],
+        .name_len = strlen(argv[1]),
+        .buffer_size = MAX_IO_BUFFER,
+        .buf = file_buf
+    };
+
+    int32_t retcode;
+    syscall(SYSCALL_READ, (uint32_t) &read_req, (uint32_t) &retcode, 0);
+
+    if (retcode != 0) {
+        char *err = "mv: File sumber tidak ditemukan atau bukan file\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+        return;
+    }
+
+    uint32_t size = strlen(file_buf);
+    if (size == 0) size = 1;
+
+    struct EXT2DriverRequest write_req = {
+        .parent_inode = cwd,
+        .name = argv[2],
+        .name_len = strlen(argv[2]),
+        .is_directory = false,
+        .buffer_size = size,
+        .buf = file_buf
+    };
+
+    syscall(SYSCALL_WRITE, (uint32_t) &write_req, (uint32_t) &retcode, 0);
+
+    if (retcode != 0) {
+        char *err = (retcode == 1) ? "mv: File tujuan sudah ada\n" : "mv: Gagal menulis file tujuan\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+        return;
+    }
+
+    // Sumber baru dihapus setelah salinan berhasil dibuat
+    struct EXT2DriverRequest del_req = {
+        .parent_inode = cwd,
+        .name = argv[1],
+        .name_len = strlen(argv[1]),
+        .is_directory = false,
+        .buffer_size = 0,
+        .buf = 0
+    };
+
+    syscall(SYSCALL_DELETE, (uint32_t) &del_req, (uint32_t) &retcode, 0);
+
+    if (retcode != 0) {
+        char *err = "mv: Gagal menghapus file sumber\n";
+        memcpy(io->output_buffer, err, strlen(err));
+        io->output_len = strlen(err);
+    }
+}
 
 
 // Code Athallah taro bawah yeah
