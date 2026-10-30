@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
+#include "header/filesystem/ext2.h"
 
 // Global variable
 uint8_t *image_storage;

@@ -1,7 +1,7 @@
 #include "header/cpu/interrupt.h"
 #include "header/cpu/portio.h"
 #include "header/driver/keyboard.h"
-#include "header/memory/swap.h"
+#include "..header/memory/swap.h"
 
 void io_wait(void) {
     out(0x80, 0);
