@@ -8,6 +8,7 @@
 #include "header/kernel-entrypoint.h"
 #include "header/driver/disk.h"
 #include "header/filesystem/ext2.h"
+#include "header/memory/paging.h"
 
 void kernel_setup(void) {
     // 1. Basic Kernel Initializations

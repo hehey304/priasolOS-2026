@@ -1,5 +1,6 @@
 #include "header/cpu/idt.h"
 #include "header/cpu/gdt.h" // Asumsi terdapat makro GDT_KERNEL_CODE_SEGMENT_SELECTOR bernilai 0x8
+#include "../.kit/ch1/2 - Interrupt/interrupt.h"
 
 struct InterruptDescriptorTable interrupt_descriptor_table;
 struct IDTR _idt_idtr = {
@@ -28,14 +29,15 @@ void initialize_idt(void) {
     for (int i = 0; i < ISR_STUB_TABLE_LIMIT; i++) {
         set_interrupt_gate(i, isr_stub_table[i], 0x8, 0); 
     }
-    __asm__ volatile("lidt %0" : : "m"(_idt_idtr));
-    __asm__ volatile("sti");
-
     // Inside initialize_idt() in idt.c
     set_interrupt_gate(
         0x30, 
-        (uint32_t) main_interrupt_handler, 
+        (void *) main_interrupt_handler, 
         GDT_KERNEL_CODE_SEGMENT_SELECTOR, 
         0x3  // CRITICAL: DPL must be 3 (Ring 3 access)
     );
+    
+    __asm__ volatile("lidt %0" : : "m"(_idt_idtr));
+    __asm__ volatile("sti");
+
 }

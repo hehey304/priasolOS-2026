@@ -51,9 +51,15 @@ kernel_execute_user_program:
 
     iret
 
+global set_tss_register
+set_tss_register:
+    mov ax, 0x28 | 0   ; GDT_TSS_SELECTOR, ring 0
+    ltr ax
+    ret
 
 
-; More details: https://en.wikibooks.org/wiki/X86_Assembly/Protected_Mode
+
+; 
 load_gdt:
     cli
     mov  eax, [esp+4]
