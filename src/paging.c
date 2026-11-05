@@ -21,8 +21,8 @@ __attribute__((aligned(0x1000))) struct PageTable _paging_kernel_page_table;
  * fisiknya cukup dihitung dengan "virtual - KERNEL_VIRTUAL_ADDRESS_BASE" dan tidak
  * memakan page frame user. Ini pengganti pendekatan recursive mapping pada kit.
  */
-__attribute__((aligned(0x1000))) static struct PageTable user_page_table_list[PAGING_USER_PAGE_TABLE_COUNT];
-static bool user_page_table_used[PAGING_USER_PAGE_TABLE_COUNT];
+__attribute__((aligned(0x1000))) static struct PageTable user_page_table_list[PAGE_TABLE_POOL_COUNT];
+static bool user_page_table_used[PAGE_TABLE_POOL_COUNT];
 
 /**
  * Global page frame manager state tracking free/busy frames.
@@ -54,7 +54,7 @@ struct PageTable *paging_get_page_table(struct PageDirectory *page_dir, uint32_t
     if (page_directory_index >= (KERNEL_VIRTUAL_ADDRESS_BASE >> 22))
         return NULL;
 
-    for (uint32_t i = 0; i < PAGING_USER_PAGE_TABLE_COUNT; i++) {
+    for (uint32_t i = 0; i < PAGE_TABLE_POOL_COUNT; i++) {
         if (!user_page_table_used[i]) {
             user_page_table_used[i] = true;
             memset(&user_page_table_list[i], 0, sizeof(struct PageTable));
@@ -62,7 +62,7 @@ struct PageTable *paging_get_page_table(struct PageDirectory *page_dir, uint32_t
             dir_entry->flag = (struct PageDirectoryEntryFlag) {
                 .present_bit         = 1,
                 .write_bit           = 1,
-                .user_supervisor_bit = 1,
+                .us_bit = 1,
             };
             dir_entry->global_page             = 0;
             dir_entry->ignored                 = 0;
@@ -133,7 +133,7 @@ bool paging_allocate_user_page_frame(struct PageDirectory *page_dir, void *virtu
             (struct PageTableEntryFlag) {
                 .present_bit         = 1,
                 .write_bit           = 1,
-                .user_supervisor_bit = 1,
+                .us_bit = 1,
             }
         );
 

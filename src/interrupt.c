@@ -3,6 +3,9 @@
 #include "header/driver/keyboard.h"
 #include "header/memory/swap.h"
 #include "header/cpu/gdt.h"
+#include "header/filesystem/ext2.h"
+#include "header/text/framebuffer.h"
+#include <stdint.h>
 
 void io_wait(void) {
     out(0x80, 0);
