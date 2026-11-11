@@ -55,7 +55,12 @@ void puts(const char *buf, uint32_t count, uint32_t color) {
         if (c == '\n') {
             cursor_col = 0;
             cursor_row++;
-        } else {
+        } else if (c == '\b') {
+            if (cursor_col > 0) {
+                cursor_col--;
+                framebuffer_write(cursor_row, cursor_col, ' ', 0x07, 0);
+            }
+        }  else {
             framebuffer_write(cursor_row, cursor_col, c, (uint8_t) color, 0);
             cursor_col++;
             if (cursor_col >= 80) {

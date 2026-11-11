@@ -27,17 +27,17 @@ void set_interrupt_gate(uint8_t int_vector, void *handler_address, uint16_t gdt_
 void initialize_idt(void) {
     // Memasukkan ISR stub dari assembly ke dalam tabel IDT
     for (int i = 0; i < ISR_STUB_TABLE_LIMIT; i++) {
-        set_interrupt_gate(i, isr_stub_table[i], 0x8, 0); 
+        set_interrupt_gate(i, isr_stub_table[i], 0x8, 0);
     }
-    // Inside initialize_idt() in idt.c
+
+    // Syscall gate: same assembly stub as the others, but DPL 3 so user mode can call it
     set_interrupt_gate(
-        0x30, 
-        (void *) main_interrupt_handler, 
-        GDT_KERNEL_CODE_SEGMENT_SELECTOR, 
-        0x3  // CRITICAL: DPL must be 3 (Ring 3 access)
+        0x30,
+        isr_stub_table[0x30],
+        GDT_KERNEL_CODE_SEGMENT_SELECTOR,
+        0x3
     );
-    
+
     __asm__ volatile("lidt %0" : : "m"(_idt_idtr));
     __asm__ volatile("sti");
-
 }

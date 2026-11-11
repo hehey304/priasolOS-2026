@@ -43,3 +43,21 @@ void *memmove(void *dest, const void *src, size_t n) {
 
     return dest;
 }
+
+size_t strlen(const char *s) {
+    size_t n = 0;
+    while (s[n] != '\0') n++;
+    return n;
+}
+
+int strcmp(const char *a, const char *b) {
+    while (*a && *a == *b) { a++; b++; }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+
+char *strcat(char *dst, const char *src) {
+    char *d = dst;
+    while (*d) d++;
+    while ((*d++ = *src++)) ;
+    return dst;
+}

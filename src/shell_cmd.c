@@ -1,6 +1,6 @@
-#include "header/shell_cmd.h"
+#include "header/stdlib/shell_cmd.h"
 #include "header/filesystem/ext2.h" 
-#include "header/syscall_nums.h"
+#include "header/stdlib/syscall_nums.h"
 #include "header/stdlib/string.h"
 
 extern void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx);
@@ -23,20 +23,20 @@ void cmd_cd(int argc, char **argv, struct ShellIO *io, uint32_t *cwd) {
     int32_t ret;
     syscall(SYSCALL_READ_DIR, (uint32_t) &req, (uint32_t) &ret, 0); 
     
-    if (ret == 0) {
+        if (ret == 0) {
         uint32_t off = 0;
         while (off < BLOCK_SIZE) {
-            uint32_t inode = *((uint32_t*)(dir_buf + off));
-            if (inode == 0) break; 
-            
-            uint16_t rec_len = *((uint16_t*)(dir_buf + off + 4));
-            uint8_t name_len = *((uint8_t*)(dir_buf + off + 6));
-            uint8_t file_type = *((uint8_t*)(dir_buf + off + 7));
-            char *name = dir_buf + off + 8;
-            
-            if (name_len == strlen(argv[1]) && memcmp(name, argv[1], name_len) == 0) {
-                if (file_type == 2) { 
-                    *cwd = inode;
+            struct EXT2DirectoryEntry *e = (struct EXT2DirectoryEntry *)(dir_buf + off);
+            if (e->inode == 0 || e->rec_len == 0) break;
+
+            char *name = (char *) e + sizeof(struct EXT2DirectoryEntry);
+            bool same = (e->name_len == strlen(argv[1]));
+            for (uint32_t k = 0; same && k < e->name_len; k++)
+                if (name[k] != argv[1][k]) same = false;
+
+            if (same) {
+                if (e->file_type == EXT2_FT_DIR) {
+                    *cwd = e->inode;
                     return;
                 } else {
                     char *err = "cd: Not a directory\n";
@@ -45,7 +45,7 @@ void cmd_cd(int argc, char **argv, struct ShellIO *io, uint32_t *cwd) {
                     return;
                 }
             }
-            off += rec_len;
+            off += e->rec_len;
         }
     }
     char *err = "cd: No such file or directory\n";
@@ -54,6 +54,8 @@ void cmd_cd(int argc, char **argv, struct ShellIO *io, uint32_t *cwd) {
 }
 
 void cmd_ls(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
+    (void) argc;
+    (void) argv;
     char dir_buf[BLOCK_SIZE]; 
     
     struct EXT2DriverRequest req = {
@@ -109,6 +111,7 @@ void cmd_mkdir(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
 }
 
 void cmd_cat(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
+    memset(io->output_buffer, 0, MAX_IO_BUFFER);
     if (argc < 2) return;
     
     struct EXT2DriverRequest req = {
@@ -239,6 +242,7 @@ void cmd_grep(int argc, char **argv, struct ShellIO *io) {
                 out_idx += line_idx;
                 io->output_buffer[out_idx++] = '\n';
             }
+            line_idx = 0;
         }
     }
     

@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdbool.h>
-#include "header/syscall_nums.h"
-#include "header/shell_cmd.h"
+#include "header/stdlib/syscall_nums.h"
+#include "header/stdlib/shell_cmd.h"
 #include "header/stdlib/string.h" 
 
 // Wrapper Syscall
@@ -14,7 +14,7 @@ void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx) {
 }
 
 void print_str(char *str) {
-    syscall(SYSCALL_PUTS, (uint32_t) str, 0, 0xF); 
+    syscall(SYSCALL_PUTS, (uint32_t) str, strlen(str), 0xF);
 }
 
 uint32_t current_cwd_inode = 1; 
@@ -32,6 +32,7 @@ int main(void) {
         int idx = 0;
         char c;
         while (true) {
+            c = 0;
             syscall(SYSCALL_GETCHAR, (uint32_t) &c, 0, 0); 
             if (c == '\n') {
                 input_buf[idx] = '\0';
@@ -89,7 +90,9 @@ int main(void) {
                 uint32_t old_cwd = current_cwd_inode;
                 cmd_cd(argc, argv, &io, &current_cwd_inode);
                 
-                if (old_cwd != current_cwd_inode) {
+                if (argc < 2) {
+                    cwd_path[0] = '/'; cwd_path[1] = '\0';
+                } else if (old_cwd != current_cwd_inode) {
                     if (strcmp(argv[1], "..") == 0) {
                         int len = strlen(cwd_path);
                         if (len > 1) { // Bukan root

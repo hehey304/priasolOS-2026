@@ -22,6 +22,15 @@ const char keyboard_scancode_1_to_ascii_map[256] = {
       0,    0,   0,   0,   0,   0,   0,   0,    0,   0,   0,    0,    0,   0,    0,    0,
 };
 
+const char keyboard_scancode_1_to_ascii_shift_map[128] = {
+      0, 0x1B, '!', '@', '#', '$', '%', '^',  '&', '*', '(',  ')',  '_', '+', '\b', '\t',
+    'Q',  'W', 'E', 'R', 'T', 'Y', 'U', 'I',  'O', 'P', '{',  '}', '\n',   0,  'A',  'S',
+    'D',  'F', 'G', 'H', 'J', 'K', 'L', ':',  '"', '~',   0,  '|',  'Z', 'X',  'C',  'V',
+    'B',  'N', 'M', '<', '>', '?',   0, '*',    0, ' ',
+};
+
+static bool shift_pressed = false;
+
 static struct KeyboardDriverState keyboard_state = {
     .read_extended_mode = false,
     .keyboard_input_on  = false,
@@ -49,8 +58,14 @@ void keyboard_isr(void) {
             keyboard_state.read_extended_mode = true;
         } else if (keyboard_state.read_extended_mode) {
             keyboard_state.read_extended_mode = false;
+        } else if (scancode == 0x2A || scancode == 0x36) {      // Shift pressed
+            shift_pressed = true;
+        } else if (scancode == 0xAA || scancode == 0xB6) {      // Shift released
+            shift_pressed = false;
         } else if (!(scancode & 0x80)) {
-            char ascii = keyboard_scancode_1_to_ascii_map[scancode];
+            char ascii = shift_pressed
+                ? keyboard_scancode_1_to_ascii_shift_map[scancode]
+                : keyboard_scancode_1_to_ascii_map[scancode];
             if (ascii) keyboard_state.keyboard_buffer = ascii;
         }
     }

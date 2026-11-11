@@ -42,8 +42,47 @@ void activate_keyboard_interrupt(void) {
     out(PIC1_DATA, in(PIC1_DATA) & ~(1 << IRQ_KEYBOARD));
 }
 
+void syscall(struct InterruptFrame frame) {
+    switch (frame.cpu.general.eax) {
+        case 0:
+            *((int8_t*) frame.cpu.general.ecx) = read(
+                *(struct EXT2DriverRequest*) frame.cpu.general.ebx
+            );
+            break;
+        case 1:
+            *((int32_t*) frame.cpu.general.ecx) =
+                read_directory((struct EXT2DriverRequest*) frame.cpu.general.ebx);
+            break;
+        case 2:
+            *((int32_t*) frame.cpu.general.ecx) =
+                write((struct EXT2DriverRequest*) frame.cpu.general.ebx);
+            break;
+        case 3:
+            *((int32_t*) frame.cpu.general.ecx) =
+                delete(*(struct EXT2DriverRequest*) frame.cpu.general.ebx);
+            break;
+        case 4:
+            get_keyboard_buffer((char*) frame.cpu.general.ebx);
+            break;
+        case 5: {
+            char ch = (char) frame.cpu.general.ebx;
+            puts(&ch, 1, frame.cpu.general.ecx);
+            break;
+        }
+        case 6:
+            puts(
+                (char*) frame.cpu.general.ebx, 
+                frame.cpu.general.ecx, 
+                frame.cpu.general.edx
+            ); // Assuming puts() exist in kernel
+            break;
+        case 7: 
+            keyboard_state_activate();
+            break;
+    }
+}
+
 void main_interrupt_handler(struct InterruptFrame frame) {
-    // Fungsi ini dipanggil dari intsetup.s lewat call_generic_handler
     switch (frame.int_number) {
         case PIC1_OFFSET + IRQ_KEYBOARD:
             keyboard_isr();
@@ -53,6 +92,7 @@ void main_interrupt_handler(struct InterruptFrame frame) {
             break;
         case 0x30:
             // Route vector 0x30 to the syscall dispatcher
+            syscall(frame);
             break;
         }
 }
@@ -69,25 +109,3 @@ void set_tss_kernel_current_stack(void) {
     _interrupt_tss_entry.esp0 = stack_ptr + 8; 
 }
 
-void syscall(struct InterruptFrame frame) {
-    switch (frame.cpu.general.eax) {
-        case 0:
-            *((int8_t*) frame.cpu.general.ecx) = read(
-                *(struct EXT2DriverRequest*) frame.cpu.general.ebx
-            );
-            break;
-        case 4:
-            get_keyboard_buffer((char*) frame.cpu.general.ebx);
-            break;
-        case 6:
-            puts(
-                (char*) frame.cpu.general.ebx, 
-                frame.cpu.general.ecx, 
-                frame.cpu.general.edx
-            ); // Assuming puts() exist in kernel
-            break;
-        case 7: 
-            keyboard_state_activate();
-            break;
-    }
-}
