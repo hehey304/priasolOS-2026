@@ -1,6 +1,6 @@
-#include "header/shell_cmd.h"
+#include "header/stdlib/shell_cmd.h"
 #include "header/filesystem/ext2.h" 
-#include "header/syscall_nums.h"
+#include "header/stdlib/syscall_nums.h"
 #include "header/stdlib/string.h"
 
 extern void syscall(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx);
@@ -23,20 +23,20 @@ void cmd_cd(int argc, char **argv, struct ShellIO *io, uint32_t *cwd) {
     int32_t ret;
     syscall(SYSCALL_READ_DIR, (uint32_t) &req, (uint32_t) &ret, 0); 
     
-    if (ret == 0) {
+        if (ret == 0) {
         uint32_t off = 0;
         while (off < BLOCK_SIZE) {
-            uint32_t inode = *((uint32_t*)(dir_buf + off));
-            if (inode == 0) break; 
-            
-            uint16_t rec_len = *((uint16_t*)(dir_buf + off + 4));
-            uint8_t name_len = *((uint8_t*)(dir_buf + off + 6));
-            uint8_t file_type = *((uint8_t*)(dir_buf + off + 7));
-            char *name = dir_buf + off + 8;
-            
-            if (name_len == strlen(argv[1]) && memcmp(name, argv[1], name_len) == 0) {
-                if (file_type == 2) { 
-                    *cwd = inode;
+            struct EXT2DirectoryEntry *e = (struct EXT2DirectoryEntry *)(dir_buf + off);
+            if (e->inode == 0 || e->rec_len == 0) break;
+
+            char *name = (char *) e + sizeof(struct EXT2DirectoryEntry);
+            bool same = (e->name_len == strlen(argv[1]));
+            for (uint32_t k = 0; same && k < e->name_len; k++)
+                if (name[k] != argv[1][k]) same = false;
+
+            if (same) {
+                if (e->file_type == EXT2_FT_DIR) {
+                    *cwd = e->inode;
                     return;
                 } else {
                     char *err = "cd: Not a directory\n";
@@ -45,7 +45,7 @@ void cmd_cd(int argc, char **argv, struct ShellIO *io, uint32_t *cwd) {
                     return;
                 }
             }
-            off += rec_len;
+            off += e->rec_len;
         }
     }
     char *err = "cd: No such file or directory\n";
@@ -54,6 +54,8 @@ void cmd_cd(int argc, char **argv, struct ShellIO *io, uint32_t *cwd) {
 }
 
 void cmd_ls(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
+    (void) argc;
+    (void) argv;
     char dir_buf[BLOCK_SIZE]; 
     
     struct EXT2DriverRequest req = {
@@ -109,6 +111,7 @@ void cmd_mkdir(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
 }
 
 void cmd_cat(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
+    memset(io->output_buffer, 0, MAX_IO_BUFFER);
     if (argc < 2) return;
     
     struct EXT2DriverRequest req = {
@@ -217,8 +220,25 @@ static int matchstar(int c, char *regexp, char *text) {
     return 0;
 }
 
-void cmd_grep(int argc, char **argv, struct ShellIO *io) {
+void cmd_grep(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
     if (argc < 2) return;
+    if (argc >= 3) {
+        struct EXT2DriverRequest req = {
+            .parent_inode = cwd,
+            .name = argv[2],
+            .name_len = strlen(argv[2]),
+            .buffer_size = MAX_IO_BUFFER,
+            .buf = io->input_buffer
+        };
+        int32_t ret = -1;
+        syscall(SYSCALL_READ, (uint32_t) &req, (uint32_t) &ret, 0);
+        if (ret != 0) {
+            char *err = "grep: file tidak ditemukan\n";
+            memcpy(io->output_buffer, err, strlen(err));
+            io->output_len = strlen(err);
+            return;
+        }
+    }
     char *keyword = argv[1]; 
     
     int in_idx = 0;
@@ -239,6 +259,7 @@ void cmd_grep(int argc, char **argv, struct ShellIO *io) {
                 out_idx += line_idx;
                 io->output_buffer[out_idx++] = '\n';
             }
+            line_idx = 0;
         }
     }
     
@@ -333,6 +354,30 @@ void cmd_rm(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
     }
 }
 
+static uint32_t find_dir_inode(uint32_t cwd, const char *name) {
+    char buf[BLOCK_SIZE];
+    struct EXT2DriverRequest req = {
+        .parent_inode = cwd, .name = ".", .name_len = 1,
+        .buffer_size = BLOCK_SIZE, .buf = buf
+    };
+    int32_t ret = -1;
+    syscall(SYSCALL_READ_DIR, (uint32_t) &req, (uint32_t) &ret, 0);
+    if (ret != 0) return 0;
+
+    uint32_t n = strlen(name), off = 0;
+    while (off < BLOCK_SIZE) {
+        struct EXT2DirectoryEntry *e = (struct EXT2DirectoryEntry *)(buf + off);
+        if (e->inode == 0 || e->rec_len == 0) break;
+        char *en = (char *) e + sizeof(struct EXT2DirectoryEntry);
+        bool same = (e->name_len == n);
+        for (uint32_t k = 0; same && k < n; k++)
+            if (en[k] != name[k]) same = false;
+        if (same) return (e->file_type == EXT2_FT_DIR) ? e->inode : 0;
+        off += e->rec_len;
+    }
+    return 0;
+}
+
 void cmd_mv(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
     if (argc < 3) {
         char *err = "mv: Penggunaan: mv <src> <dst>\n";
@@ -365,10 +410,14 @@ void cmd_mv(int argc, char **argv, struct ShellIO *io, uint32_t cwd) {
     uint32_t size = strlen(file_buf);
     if (size == 0) size = 1;
 
+    uint32_t dst_parent = find_dir_inode(cwd, argv[2]);
+    char *dst_name = argv[1];              /* moving into a folder keeps the name */
+    if (dst_parent == 0) { dst_parent = cwd; dst_name = argv[2]; }   /* plain rename */
+
     struct EXT2DriverRequest write_req = {
-        .parent_inode = cwd,
-        .name = argv[2],
-        .name_len = strlen(argv[2]),
+        .parent_inode = dst_parent,
+        .name = dst_name,
+        .name_len = strlen(dst_name),
         .is_directory = false,
         .buffer_size = size,
         .buf = file_buf

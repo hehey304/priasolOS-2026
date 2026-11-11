@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
+#include "../header/stdlib/string.h"
 #include <stdbool.h>
 #include "header/filesystem/ext2.h"
 

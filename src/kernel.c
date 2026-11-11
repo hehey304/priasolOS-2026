@@ -24,8 +24,19 @@ void kernel_setup(void) {
     gdt_install_tss();
     set_tss_register();
 
-    // 3. Allocate Virtual Memory for User Program at Address 0x0
-    paging_allocate_user_page_frame(&_paging_kernel_page_directory, (uint8_t*) 0);
+    _paging_kernel_page_directory.table[RECURSIVE_PAGE_DIRECTORY_INDEX] = (struct PageDirectoryEntry) {
+    .flag = { .present_bit = 1, .write_bit = 1 },
+    .page_table_base_address =
+        ((uint32_t) &_paging_kernel_page_directory - KERNEL_VIRTUAL_ADDRESS_BASE) >> 12,
+};
+
+    // 3. Allocate Virtual Memory for User Program (Multi-page loop)
+    for (uint32_t addr = 0; addr < 0x100000; addr += 0x1000) {
+        paging_allocate_user_page_frame(&_paging_kernel_page_directory, (uint8_t*) addr);
+    }
+
+    for (uint32_t addr = 0x3F0000; addr < 0x400000; addr += 0x1000)
+    paging_allocate_user_page_frame(&_paging_kernel_page_directory, (uint8_t*) addr);
 
     // 4. Load "shell" Binary from Root Directory (Inode 1) into Virtual Address 0x0
     struct EXT2DriverRequest request = {
@@ -35,10 +46,15 @@ void kernel_setup(void) {
         .buffer_size = 0x100000,
         .name_len = 5,
     };
-    read(request);
-
+    int8_t r = read(request);
+    if (r != 0) {
+        framebuffer_write(0, 0, 'E', 0xC, 0);              // E = shell load failed
+        framebuffer_write(0, 1, '0' + (r & 0xF), 0xC, 0);  // error code digit
+        while (true);
+    }
     // 5. Prepare TSS Kernel Stack and Jump to Ring 3
     set_tss_kernel_current_stack();
+
     kernel_execute_user_program((uint8_t*) 0);
 
     while (true);
