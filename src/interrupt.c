@@ -45,7 +45,7 @@ void activate_keyboard_interrupt(void) {
 void syscall(struct InterruptFrame frame) {
     switch (frame.cpu.general.eax) {
         case 0:
-            *((int8_t*) frame.cpu.general.ecx) = read(
+            *((int32_t*) frame.cpu.general.ecx) = read(
                 *(struct EXT2DriverRequest*) frame.cpu.general.ebx
             );
             break;

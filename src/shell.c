@@ -114,7 +114,7 @@ int main(void) {
             } else if (strcmp(argv[0], "cat") == 0) {
                 cmd_cat(argc, argv, &io, current_cwd_inode);
             } else if (strcmp(argv[0], "grep") == 0) {
-                cmd_grep(argc, argv, &io);
+                cmd_grep(argc, argv, &io, current_cwd_inode);
             } else if (strcmp(argv[0], "find") == 0) {
                 cmd_find(argc, argv, &io);
             } else if (strcmp(argv[0], "cp") == 0) {

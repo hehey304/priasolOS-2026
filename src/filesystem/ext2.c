@@ -739,9 +739,9 @@ int8_t write(struct EXT2DriverRequest *request) {
             struct EXT2DirectoryEntry *new_entry = (struct EXT2DirectoryEntry *)new_p_dir_buf.buf;
             new_entry->inode = new_inode_num;
             new_entry->name_len = request->name_len;
-            new_entry->file_type = request->is_directory ? EXT2_FT_DIR : EXT2_FT_REG_FILE;
+            new_entry->file_type = (request->is_directory || request->buffer_size == 0) ? EXT2_FT_DIR : EXT2_FT_REG_FILE;
             new_entry->rec_len = BLOCK_SIZE; 
-            memset(get_entry_name(new_entry), 0, new_entry->name_len + 4); 
+            memset(get_entry_name(new_entry), 0, required_len - sizeof(struct EXT2DirectoryEntry)); 
             memcpy(get_entry_name(new_entry), request->name, request->name_len);
             
             write_blocks(&new_p_dir_buf, new_parent_block, 1);
@@ -760,7 +760,7 @@ int8_t write(struct EXT2DriverRequest *request) {
             uint16_t ideal_len = sizeof(struct EXT2DirectoryEntry) + entry->name_len;
             if (ideal_len % 4 != 0) ideal_len += 4 - (ideal_len % 4);
 
-            if (entry->inode == 0 || (entry->rec_len - ideal_len) >= required_len) {
+            if ((entry->inode == 0 && entry->rec_len >= required_len) || (entry->inode != 0 && entry->rec_len >= ideal_len + required_len)) {
                 uint16_t old_rec_len = entry->rec_len;
                 
                 if (entry->inode != 0) {
@@ -773,9 +773,9 @@ int8_t write(struct EXT2DriverRequest *request) {
 
                 entry->inode = new_inode_num;
                 entry->name_len = request->name_len;
-                entry->file_type = request->is_directory ? EXT2_FT_DIR : EXT2_FT_REG_FILE;
+                entry->file_type = (request->is_directory || request->buffer_size == 0) ? EXT2_FT_DIR : EXT2_FT_REG_FILE;
                 
-                memset((char*)entry + sizeof(struct EXT2DirectoryEntry), 0, entry->name_len + 4); 
+                memset((char*)entry + sizeof(struct EXT2DirectoryEntry), 0, required_len - sizeof(struct EXT2DirectoryEntry));
                 memcpy((char*)entry + sizeof(struct EXT2DirectoryEntry), request->name, request->name_len);
 
                 write_blocks(&p_dir_buf, p_lba, 1);
@@ -796,6 +796,16 @@ int8_t write(struct EXT2DriverRequest *request) {
     p4_write_inode(request->parent_inode, &parent_inode);
 
     return 0; 
+}
+
+static void p4_free_block(uint32_t lba) {
+    struct BlockBuffer bitmap_buf;
+    uint32_t bg  = lba / BLOCKS_PER_GROUP;
+    uint32_t bit = lba % BLOCKS_PER_GROUP;
+    read_blocks(&bitmap_buf, bgd_table.table[bg].bg_block_bitmap, 1);
+    bitmap_buf.buf[bit / 8] &= ~(1 << (bit % 8));
+    write_blocks(&bitmap_buf, bgd_table.table[bg].bg_block_bitmap, 1);
+    bgd_table.table[bg].bg_free_blocks_count++;
 }
 
 /* ============================ delete() ============================ */
@@ -843,22 +853,15 @@ int8_t delete(struct EXT2DriverRequest request) {
         blocks_to_free = 1; 
     }
 
-    struct BlockBuffer bitmap_buf;
     for (uint32_t i = 0; i < blocks_to_free; i++) {
         uint32_t lba = inode_block_at(&target_inode, i);
-        if (lba != 0) {
-            uint32_t bg = lba / BLOCKS_PER_GROUP;
-            uint32_t bit = lba % BLOCKS_PER_GROUP;
-            
-            read_blocks(&bitmap_buf, bgd_table.table[bg].bg_block_bitmap, 1);
-            bitmap_buf.buf[bit / 8] &= ~(1 << (bit % 8)); // Ubah bit menjadi 0 (Free)
-            write_blocks(&bitmap_buf, bgd_table.table[bg].bg_block_bitmap, 1);
-            
-            bgd_table.table[bg].bg_free_blocks_count++;
-        }
+        if (lba != 0) p4_free_block(lba);
     }
+    if (target_inode.i_block[12] != 0)
+        p4_free_block(target_inode.i_block[12]);   // the indirect index block
 
     // 7. Bebaskan Inode di Inode Bitmap
+    struct BlockBuffer bitmap_buf;
     uint32_t bg_inode = inode_to_bgd(target_inode_num);
     uint32_t bit_inode = inode_to_local(target_inode_num);
     

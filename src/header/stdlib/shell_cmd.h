@@ -15,7 +15,7 @@ void cmd_cd(int argc, char **argv, struct ShellIO *io, uint32_t *cwd);
 void cmd_ls(int argc, char **argv, struct ShellIO *io, uint32_t cwd);
 void cmd_mkdir(int argc, char **argv, struct ShellIO *io, uint32_t cwd);
 void cmd_cat(int argc, char **argv, struct ShellIO *io, uint32_t cwd);
-void cmd_grep(int argc, char **argv, struct ShellIO *io);
+void cmd_grep(int argc, char **argv, struct ShellIO *io, uint32_t cwd);
 void cmd_find(int argc, char **argv, struct ShellIO *io);
 void cmd_cp(int argc, char **argv, struct ShellIO *io, uint32_t cwd);
 void cmd_rm(int argc, char **argv, struct ShellIO *io, uint32_t cwd);
